@@ -22,7 +22,7 @@ The datahub handler processes the operations of OGG trails, and upload the chang
 Clone the project from github:
 
 ```
-$ git clone git@github.com:aliyun/aliyun-odps-fluentd-plugin.git
+$ git clone git@github.com:aliyun/aliyun-odps-ogg-plugin.git
 ```
 
 Build the package with the script file:
