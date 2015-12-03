@@ -44,10 +44,11 @@ public class CreateHandler extends CmdHandler {
         }
 
         try {
-            tables.create(tableName, schema);
-            int shardNumber = Integer.valueOf(Preconditions.checkNotNull(getHubProperty("shardNumber"), "shardNumber is not specified."));
-            int hubLifeCycle = Integer.valueOf(Preconditions.checkNotNull(getHubProperty("hubLifeCycle"), "hubLifeCycle is not specified."));
-            tables.get(tableName).createShards(shardNumber, true, hubLifeCycle);
+            long shardNumber = Long.valueOf(
+                Preconditions.checkNotNull(getHubProperty("shardNumber"), "shardNumber is not specified."));
+            long hubLifeCycle = Long.valueOf(
+                Preconditions.checkNotNull(getHubProperty("hubLifeCycle"), "hubLifeCycle is not specified."));
+            tables.create(projectName, tableName, schema, false, shardNumber, hubLifeCycle);
         } catch (OdpsException e) {
             logger.error("Create table failed. ", e);
             throw new RuntimeException("Create table failed. ", e);

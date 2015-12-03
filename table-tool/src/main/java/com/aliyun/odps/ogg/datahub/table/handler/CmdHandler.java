@@ -29,6 +29,7 @@ public abstract class CmdHandler {
     private Properties prop;
 
     protected Tables tables;
+    protected String projectName;
     protected String tableName;
 
     protected void init() {
@@ -54,8 +55,9 @@ public abstract class CmdHandler {
     }
 
     private void buildOdpsTables() {
+        projectName = getHubProperty("project");
         Odps odps = new Odps(new AliyunAccount(getHubProperty("accessID"), getHubProperty("accessKey")));
-        odps.setDefaultProject(getHubProperty("project"));
+        odps.setDefaultProject(projectName);
         odps.setEndpoint(getHubProperty("endPoint"));
         tables = odps.tables();
         tableName = Preconditions.checkNotNull(getHubProperty("tableName"), "tableName is not specified.");
