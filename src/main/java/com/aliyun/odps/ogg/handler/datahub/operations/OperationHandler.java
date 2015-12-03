@@ -74,7 +74,11 @@ public abstract class OperationHandler {
                 rowMap.put(ColNameUtil.getBeforeName(colName), cols.get(i).getBeforeValue());
                 rowMap.put(ColNameUtil.getAfterName(colName), cols.get(i).getAfterValue());
             } else if (keyColMap != null && keyColMap.containsKey(colName)) {
-                rowMap.put(colName, cols.get(i).getAfterValue());
+                String keyValue = cols.get(i).getAfterValue();
+                if (StringUtils.isEmpty(keyValue)) {
+                    keyValue = cols.get(i).getBeforeValue();
+                }
+                rowMap.put(colName, keyValue);
             }
         }
 
