@@ -219,6 +219,8 @@ public class DatahubHandler extends AbstractHandler {
         handlerProperties.setRetryCount(retryCount);
         handlerProperties.setDbDateFormat(dbDateFormat);
         handlerProperties.setMetaFieldName("meta");
+        handlerProperties.setOpTypeFieldName("optype");
+        handlerProperties.setReadTimeFieldName("readtime");
 
         TableTunnel tunnel = new TableTunnel(odps);
         tunnel.setEndpoint(datahubEndPoint);

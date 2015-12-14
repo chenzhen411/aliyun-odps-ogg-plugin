@@ -63,17 +63,19 @@ public abstract class OperationHandler {
 
         Map<String, String> rowMap = Maps.newHashMap();
         // Get meta
-        RecordMeta meta = new RecordMeta();
-        // TODO check timestamp
-        meta.setDbsync_ts(op.getOperation().getReadTimeAsString());
-        meta.setDbsync_db_name(op.getTableName().getSchemaName());
-        meta.setDbsync_table_name(op.getTableName().getShortName());
-        meta.setDbsync_modify_time(op.getTimestamp());
-        meta.setDbsync_opertion(op.getOperationType().fullString());
-        meta.setDbsync_keys(handlerProperties.getTableKeysMap().get(fullTableName));
-
-        Gson gson = new Gson();
-        rowMap.put(handlerProperties.getMetaFieldName(), gson.toJson(meta));
+//        RecordMeta meta = new RecordMeta();
+//        // TODO check timestamp
+//        meta.setDbsync_ts(op.getOperation().getReadTimeAsString());
+//        meta.setDbsync_db_name(op.getTableName().getSchemaName());
+//        meta.setDbsync_table_name(op.getTableName().getShortName());
+//        meta.setDbsync_modify_time(op.getTimestamp());
+//        meta.setDbsync_opertion(op.getOperationType().fullString());
+//        meta.setDbsync_keys(handlerProperties.getTableKeysMap().get(fullTableName));
+//
+//        Gson gson = new Gson();
+//        rowMap.put(handlerProperties.getMetaFieldName(), gson.toJson(meta));
+        rowMap.put(handlerProperties.getOpTypeFieldName(), op.getOperationType().fullString());
+        rowMap.put(handlerProperties.getReadTimeFieldName(), op.getOperation().getReadTimeAsString());
 
         // Get data
         Set<String> focusFields = handlerProperties.getTableFocusMap().get(fullTableName);
@@ -82,7 +84,10 @@ public abstract class OperationHandler {
         List<DsColumn> cols = op.getColumns();
         for (int i = 0; i < cols.size(); i++) {
             String colName = op.getTableMeta().getColumnName(i).toLowerCase();
-            if ((focusFields != null && focusFields.contains(colName)) || (keyFields != null && keyFields.contains(colName))) {
+            if (focusFields != null && focusFields.contains(colName)) {
+                rowMap.put(OdpsUtils.getColNameBefore(colName), cols.get(i).getBeforeValue());
+                rowMap.put(OdpsUtils.getColNameAfter(colName), cols.get(i).getAfterValue());
+            } else if (keyFields != null && keyFields.contains(colName)) {
                 String colValue = cols.get(i).getAfterValue();
                 if (StringUtils.isEmpty(colValue)) {
                     colValue = cols.get(i).getBeforeValue();
@@ -119,24 +124,33 @@ public abstract class OperationHandler {
         }
         OdpsWriter odpsWriter = tableWriterMap.get(fullTableName);
         if (odpsWriter == null) {
-            String odpsTableName = handlerProperties.getOracleOdpsTableMap().get(fullTableName.toLowerCase());
+            String odpsTableName = handlerProperties.getOracleOdpsTableMap().get(fullTableName);
             if (odpsTableName == null) {
                 throw new OdpsTableNotSetException("Oracle table name: " + fullTableName);
             }
             List<String> inputColNames = Lists.newLinkedList();
-            inputColNames.add(handlerProperties.getMetaFieldName());
+            // Meta cols
+            //inputColNames.add(handlerProperties.getMetaFieldName());
+            inputColNames.add(handlerProperties.getOpTypeFieldName());
+            inputColNames.add(handlerProperties.getReadTimeFieldName());
+
+            // Key cols
             Set<String> keyFields = handlerProperties.getTableKeysMap().get(fullTableName);
             if (keyFields != null) {
                 for (String k: keyFields) {
                     inputColNames.add(k);
                 }
             }
+            // Focus cols
             Set<String> focusFields = handlerProperties.getTableFocusMap().get(fullTableName);
             if (focusFields != null) {
                 for (String f: focusFields) {
-                    inputColNames.add(f);
+                    inputColNames.add(OdpsUtils.getColNameBefore(f));
+                    inputColNames.add(OdpsUtils.getColNameAfter(f));
                 }
             }
+
+            // Build writer
             Table odpsTable = handlerProperties.getOdpsTables().get(odpsTableName);
             odpsWriter = OdpsUtils.buildOdpsWriter(odpsTable,
                 handlerProperties.getTunnel(),

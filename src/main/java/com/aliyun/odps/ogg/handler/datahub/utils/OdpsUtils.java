@@ -16,6 +16,14 @@ import java.util.concurrent.TimeoutException;
  * Created by tianli on 15/12/13.
  */
 public class OdpsUtils {
+  public static String getColNameBefore(String s) {
+    return s + "_before";
+  }
+
+  public static String getColNameAfter(String s) {
+    return s + "_after";
+  }
+
   public static OdpsWriter buildOdpsWriter(Table table,
                                            TableTunnel tunnel,
                                            String project,

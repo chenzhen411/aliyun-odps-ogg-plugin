@@ -44,6 +44,8 @@ public class HandlerProperties {
 	private Map<String, Set<String>> tableKeysMap;
 	private Map<String, Set<String>> tableFocusMap;
 	private String metaFieldName;
+	private String opTypeFieldName;
+	private String readTimeFieldName;
 
 	public Long totalInserts = 0L;
 	public Long totalUpdates = 0L;
@@ -200,5 +202,21 @@ public class HandlerProperties {
 
 	public void setMetaFieldName(String metaFieldName) {
 		this.metaFieldName = metaFieldName;
+	}
+
+	public String getOpTypeFieldName() {
+		return opTypeFieldName;
+	}
+
+	public void setOpTypeFieldName(String opTypeFieldName) {
+		this.opTypeFieldName = opTypeFieldName;
+	}
+
+	public String getReadTimeFieldName() {
+		return readTimeFieldName;
+	}
+
+	public void setReadTimeFieldName(String readTimeFieldName) {
+		this.readTimeFieldName = readTimeFieldName;
 	}
 }
