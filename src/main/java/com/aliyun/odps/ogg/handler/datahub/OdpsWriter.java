@@ -19,112 +19,122 @@ package com.aliyun.odps.ogg.handler.datahub;
 
 import java.io.IOException;
 import java.text.ParseException;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
+import java.util.*;
 
+import com.aliyun.odps.*;
+import com.aliyun.odps.data.Record;
 import org.apache.commons.lang.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import com.aliyun.odps.PartitionSpec;
-import com.aliyun.odps.Table;
-import com.aliyun.odps.TableSchema;
-import com.aliyun.odps.ogg.handler.datahub.dataobject.OdpsRowDO;
-import com.aliyun.odps.ogg.handler.datahub.dataobject.OdpsStreamRecordPackDO;
 import com.aliyun.odps.tunnel.TunnelException;
 import com.aliyun.odps.tunnel.io.StreamRecordPack;
 import com.aliyun.odps.tunnel.io.StreamWriter;
-import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
 
 public class OdpsWriter {
     private static final Logger logger = LoggerFactory.getLogger(OdpsWriter.class);
 
+    private Map<String, StreamRecordPack> partitionRecordsMap;
     private StreamWriter[] streamWriters;
-    private Random random;
     private TableSchema tableSchema;
-    private int sentPartitionCount;
     private int retryCount;
+    private int batchSize;
+    private Random random;
+    private RecordBuilder recordBuilder;
+    private Set<String> partitionSet;
+    private Table table;
 
-    public int getSentPartitionCount() {
-        return sentPartitionCount;
-    }
-
-    public OdpsWriter(Table odpsTable, StreamWriter[] streamWriters, int sentPartitionCount, int retryCount) {
+    public OdpsWriter(Table table,
+                      StreamWriter[] streamWriters,
+                      int batchSize,
+                      int retryCount,
+                      String dateFormatString,
+                      List<String> inputColNames) throws TunnelException {
+        this.table = table;
         this.streamWriters = streamWriters;
-        tableSchema = odpsTable.getSchema();
-        this.random = new Random();
-        this.sentPartitionCount = sentPartitionCount;
+        this.tableSchema = table.getSchema();
         this.retryCount = retryCount;
+        this.batchSize = batchSize;
+        random = new Random();
+        partitionRecordsMap = new HashMap<String, StreamRecordPack>();
+        recordBuilder = new RecordBuilder(table, dateFormatString, inputColNames);
+        partitionSet = new HashSet<String>();
+        for (Partition partition: table.getPartitions()) {
+            partitionSet.add(partition.getPartitionSpec().toString());
+        }
     }
 
-    public void write(List<OdpsRowDO> rowList) throws InterruptedException, TunnelException, IOException,
-            ParseException {
-        if (rowList == null || rowList.isEmpty()) {
+    public Set<String> getPartitionSet() {
+        return partitionSet;
+    }
+
+    public void createPartition(PartitionSpec partitionSpec, boolean ifNotExist) throws OdpsException {
+        table.createPartition(partitionSpec, ifNotExist);
+    }
+
+    public void addToList(String partition, Map<String, String> rowMap) throws IOException, TunnelException, ParseException {
+        Record record = recordBuilder.buildRecord(rowMap);
+        StreamRecordPack recordPack = partitionRecordsMap.get(partition);
+        if (recordPack == null) {
+            recordPack = new StreamRecordPack(tableSchema);
+            partitionRecordsMap.put(partition, recordPack);
+        }
+        recordPack.append(record);
+        if (recordPack.getRecordCount() >= batchSize) {
+            flush(partition);
+        }
+    }
+
+    public void flush(String partition) throws IOException, TunnelException {
+        StreamRecordPack recordPack = partitionRecordsMap.remove(partition);
+        writeToHub(partition, recordPack);
+    }
+
+    public void flushAll() throws IOException, TunnelException {
+        // Iterate the map
+        for(Iterator<Map.Entry<String, StreamRecordPack>> it = partitionRecordsMap.entrySet().iterator(); it.hasNext();) {
+            Map.Entry<String, StreamRecordPack> entry = it.next();
+            writeToHub(entry.getKey(), entry.getValue());
+            it.remove();
+        }
+    }
+
+    public static class WriteHubRetryFailedException extends RuntimeException {
+        public WriteHubRetryFailedException(String msg, Exception e) {
+            super(msg, e);
+        }
+    }
+
+    public void writeToHub(String partition, StreamRecordPack pack) {
+        if (pack == null) {
             return;
         }
-        List<OdpsStreamRecordPackDO> packDOList = buildRecordPackList(rowList);
-        if (packDOList == null || packDOList.isEmpty()) {
-            return;
-        }
-        int currentPartitionID = 0;
-        for (OdpsStreamRecordPackDO streamRecordPackDO : packDOList) {
-            if(currentPartitionID < sentPartitionCount) {
-                currentPartitionID++;
-                continue;
-            }
-            int retry = 0;
-            while (true) {
-                try {
-                    writePack(streamRecordPackDO);
-                    break;
-                } catch (Exception e) {
-                    retry++;
-                    if (retry == retryCount) {
-                        throw new RuntimeException("Retry failed. Retry count reaches limit.", e);
-                    }
-                    int sleepTime = 50 + 1000 * (retry - 1);
-                    logger.warn("Write pack failed. Will retry after " + sleepTime + " ms.", e);
-                    Thread.sleep(sleepTime);
+        int retrys = 0;
+        while (true) {
+            try {
+                if (StringUtils.isEmpty(partition)) {
+                    streamWriters[random.nextInt(streamWriters.length)]
+                        .write(pack);
+                } else {
+                    streamWriters[random.nextInt(streamWriters.length)]
+                        .write(new PartitionSpec(partition), pack);
                 }
+                break;
+            } catch (Exception e) {
+                if (retrys >= retryCount) {
+                    throw new WriteHubRetryFailedException("Failed writing data. Retry count reaches limit.", e);
+                }
+                int sleepTime = 3000;
+                logger.warn("Write pack failed. Will retry after " + sleepTime + " ms.", e);
+                try {
+                    Thread.sleep(sleepTime);
+                } catch (InterruptedException e1) {
+                    // Do nothing
+                }
+                retrys++;
             }
-            currentPartitionID++;
-            sentPartitionCount++;
         }
-        sentPartitionCount = 0;
     }
 
-    private void writePack(OdpsStreamRecordPackDO packDO) throws IOException, TunnelException {
-        if (StringUtils.isEmpty(packDO.getPartitionSpec())) {
-            streamWriters[random.nextInt(streamWriters.length)].write(packDO.getRecordPack());
-        } else {
-            streamWriters[random.nextInt(streamWriters.length)].write(new PartitionSpec(packDO.getPartitionSpec()),
-                    packDO.getRecordPack());
-        }
-    }
 
-    private List<OdpsStreamRecordPackDO> buildRecordPackList(List<OdpsRowDO> rowDOList) throws IOException,
-            ParseException {
-        if (rowDOList == null || rowDOList.isEmpty()) {
-            return null;
-        }
-        List<OdpsStreamRecordPackDO> recordPackDOList = Lists.newArrayList();
-        Map<String, OdpsStreamRecordPackDO> partitionPackMap = Maps.newHashMap();
-        for (OdpsRowDO rowDO : rowDOList) {
-            OdpsStreamRecordPackDO packDO = partitionPackMap.get(rowDO.getPartitionSpec());
-            if (packDO == null) {
-                packDO = new OdpsStreamRecordPackDO();
-                StreamRecordPack streamRecordPack = new StreamRecordPack(tableSchema);
-                packDO.setPartitionSpec(rowDO.getPartitionSpec());
-                packDO.setRecordPack(streamRecordPack);
-                partitionPackMap.put(rowDO.getPartitionSpec(), packDO);
-            }
-            packDO.getRecordPack().append(rowDO.getRecord());
-        }
-        if (partitionPackMap.keySet().size() > 0) {
-            recordPackDOList.addAll(partitionPackMap.values());
-        }
-        return recordPackDOList;
-    }
 }

@@ -84,6 +84,9 @@ public class RecordBuilder {
 
     private void setField(Record record, String field, String fieldValue, OdpsType odpsType) throws ParseException {
         if (StringUtils.isNotEmpty(field) && StringUtils.isNotEmpty(fieldValue)) {
+            if (odpsType == null) {
+                throw new RuntimeException("Unknown column type: " + odpsType + " of " + field + "=" + fieldValue);
+            }
             switch (odpsType) {
                 case STRING:
                     record.setString(field, fieldValue);
@@ -109,7 +112,7 @@ public class RecordBuilder {
                 case DECIMAL:
                     record.setDecimal(field, new BigDecimal(fieldValue));
                 default:
-                    throw new RuntimeException("Unknown column type: " + odpsType);
+                    throw new RuntimeException("Unknown column type: " + odpsType + " of " + field + "=" + fieldValue);
             }
         }
     }

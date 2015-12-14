@@ -18,20 +18,14 @@
 package com.aliyun.odps.ogg.handler.datahub;
 
 import com.aliyun.odps.Odps;
-import com.aliyun.odps.Partition;
 import com.aliyun.odps.Table;
 import com.aliyun.odps.account.Account;
 import com.aliyun.odps.account.AliyunAccount;
 import com.aliyun.odps.ogg.handler.datahub.alarm.LogAlarm;
 import com.aliyun.odps.ogg.handler.datahub.alarm.OggAlarm;
-import com.aliyun.odps.ogg.handler.datahub.dataobject.OdpsRowDO;
 import com.aliyun.odps.ogg.handler.datahub.operations.OperationHandler;
 import com.aliyun.odps.ogg.handler.datahub.operations.OperationTypes;
-import com.aliyun.odps.ogg.handler.datahub.utils.ColNameUtil;
-import com.aliyun.odps.tunnel.StreamClient;
 import com.aliyun.odps.tunnel.TableTunnel;
-import com.aliyun.odps.tunnel.TunnelException;
-import com.aliyun.odps.tunnel.io.StreamWriter;
 import com.goldengate.atg.datasource.*;
 import com.goldengate.atg.datasource.GGDataSource.Status;
 import com.goldengate.atg.datasource.adapt.Op;
@@ -45,7 +39,6 @@ import org.slf4j.LoggerFactory;
 import java.io.*;
 import java.text.SimpleDateFormat;
 import java.util.*;
-import java.util.concurrent.TimeoutException;
 
 public class DatahubHandler extends AbstractHandler {
     private final static Logger logger = LoggerFactory
@@ -53,13 +46,11 @@ public class DatahubHandler extends AbstractHandler {
 
     private String alarmImplement = LogAlarm.class.getName();
 
-    // Operation type & time
-    private String operTypeField;
-    private String operTimeField;
-
     // Focus cols, comma seperated
     private String focusFields;
     private String keyFields;
+
+    private String tableMap;
 
     // Table related
     private String project;
@@ -68,7 +59,7 @@ public class DatahubHandler extends AbstractHandler {
     private String accessKey;
     private String endPoint = "http://service.odps.aliyun.com/api";
     private String datahubEndPoint = "http://dh.odps.aliyun.com";
-    private int shardNumber = 1;
+    private long shardNumber = 1;
     private int shardTimeout = 60;
     private int hubLifeCycle = 7;
     private String timestampField;
@@ -84,13 +75,10 @@ public class DatahubHandler extends AbstractHandler {
     private String failedOperationFileName;
 
     private HandlerProperties handlerProperties;
-    private OdpsWriter odpsWriter;
     private Odps odps;
     private Table odpsTable;
     private OggAlarm oggAlarm;
 
-    private int batchEventCount;
-    private int currentBatchCount;
     private int sentBatchCount;
     private int sentPartitionCount;
 
@@ -101,57 +89,99 @@ public class DatahubHandler extends AbstractHandler {
     @Override
     public void init(DsConfiguration dsConf, DsMetaData dsMeta) {
         super.init(dsConf, dsMeta);
-        if (StringUtils.isEmpty(handlerInfoFileName)) {
-            handlerInfoFileName = "dirdat/" + getName() + "_handler_info";
-        }
+
+
+//        if (StringUtils.isEmpty(handlerInfoFileName)) {
+//            handlerInfoFileName = "dirdat/" + getName() + "_handler_info";
+//        }
+        badRecordCount = 0;
         if (StringUtils.isEmpty(failedOperationFileName)) {
             failedOperationFileName = "dirrpt/" + getName() + "_bad_operations.data";
         }
-        badRecordCount = 0;
+
         buildOdps();
         initProperty();
-        loadCountInfo();
+//        loadCountInfo();
     }
 
-    private void loadCountInfo() {
-        batchEventCount = 0;
-        currentBatchCount = 0;
-        File handlerInfoFile = new File(handlerInfoFileName);
-        if (handlerInfoFile.exists() && !handlerInfoFile.isDirectory()) {
-            DataInputStream in = null;
-            try {
-                in = new DataInputStream(new FileInputStream(handlerInfoFile));
-                sentBatchCount = in.readInt();
-                sentPartitionCount = in.readInt();
-            } catch (IOException e) {
-                logger.warn("Error reading handler info file, may cause duplication ", e);
-                oggAlarm.warn("Error reading handler info file, may cause duplication ", e);
-            } finally {
-                if (in != null) {
-                    try {
-                        in.close();
-                    } catch (IOException e) {
-                        logger.warn("Close handler info file failed. ", e);
-                        oggAlarm.warn("Close handler info file failed. ", e);
-                    }
-                }
-            }
-        } else {
-            sentBatchCount = 0;
-            sentPartitionCount = 0;
-        }
-    }
+//    private void loadCountInfo() {
+//        batchEventCount = 0;
+//        currentBatchCount = 0;
+//        File handlerInfoFile = new File(handlerInfoFileName);
+//        if (handlerInfoFile.exists() && !handlerInfoFile.isDirectory()) {
+//            DataInputStream in = null;
+//            try {
+//                in = new DataInputStream(new FileInputStream(handlerInfoFile));
+//                sentBatchCount = in.readInt();
+//                sentPartitionCount = in.readInt();
+//            } catch (IOException e) {
+//                logger.warn("Error reading handler info file, may cause duplication ", e);
+//                oggAlarm.warn("Error reading handler info file, may cause duplication ", e);
+//            } finally {
+//                if (in != null) {
+//                    try {
+//                        in.close();
+//                    } catch (IOException e) {
+//                        logger.warn("Close handler info file failed. ", e);
+//                        oggAlarm.warn("Close handler info file failed. ", e);
+//                    }
+//                }
+//            }
+//        } else {
+//            sentBatchCount = 0;
+//            sentPartitionCount = 0;
+//        }
+//    }
 
     private void buildOdps() {
         Account account = new AliyunAccount(accessID, accessKey);
         odps = new Odps(account);
         odps.setDefaultProject(project);
         odps.setEndpoint(endPoint);
-        odpsTable = odps.tables().get(tableName);
+    }
+
+    private Map<String, String> buildMap(String str) {
+        if (StringUtils.isEmpty(str)) {
+            return null;
+        }
+        // "key1/value1,key2/value2,..."
+        // all to lower case
+        Map<String, String> map = Maps.newHashMap();
+        String[] array = str.split(",");
+        for(String s: array) {
+            String[] pair = s.split("/");
+            map.put(pair[0].trim().toLowerCase(), pair[1].trim().toLowerCase());
+        }
+        return map;
+    }
+
+    private Map<String, Set<String>> buildStringSetMap(String str) {
+        if (StringUtils.isEmpty(str)) {
+            return null;
+        }
+        // "table1:name1/type1,name2/type2|table2:name3/type3|...
+        // all to lower case
+        Map<String, Set<String>> map = Maps.newHashMap();
+        String[] tableInfos = str.split("\\|");
+        for (String tableInfo: tableInfos) {
+            String[] nameList = tableInfo.split(":");
+            String name = nameList[0].trim().toLowerCase();
+            Set<String> valSet = new HashSet<>();
+            for (String s: nameList[1].split(",")) {
+                valSet.add(s.split("/")[0].trim().toLowerCase());
+            }
+            map.put(name, valSet);
+        }
+        return map;
     }
 
     private void initProperty() {
         handlerProperties = new HandlerProperties();
+
+        handlerProperties.setOracleOdpsTableMap(buildMap(tableMap));
+        handlerProperties.setTableKeysMap(buildStringSetMap(keyFields));
+        handlerProperties.setTableFocusMap(buildStringSetMap(focusFields));
+
         // Set custom alarm...
         try {
             oggAlarm = (OggAlarm) Class.forName(alarmImplement).newInstance();
@@ -161,56 +191,18 @@ public class DatahubHandler extends AbstractHandler {
         handlerProperties.setOggAlarm(oggAlarm);
 
         // Set properties...
-        handlerProperties.setOperTimeField(operTimeField);
-        handlerProperties.setOperTypeField(operTypeField);
         handlerProperties.setTimestampField(timestampField);
         handlerProperties.setSimpleDateFormat(new SimpleDateFormat(timestampDateFormat));
-        handlerProperties.setOdpsTable(odpsTable);
-
-        // Build focus cols
-        String[] focusCols = getPropCols(focusFields);
-        Map<String, Boolean> focusColMap = buildColMap(focusCols);
-        handlerProperties.setFocusColMap(focusColMap);
-
-        // Build key cols
-        String[] keyCols = getPropCols(keyFields);
-        Map<String, Boolean> keyColMap = buildColMap(keyCols);
-        handlerProperties.setKeyColMap(keyColMap);
-
-        // Init rowDOs
-        List<OdpsRowDO> rowDOs = Lists.newLinkedList();
-        handlerProperties.setOdpsRowDOs(rowDOs);
-
-        // Build input columns
-        List<String> inputColNames = Lists.newLinkedList();
-        if (StringUtils.isNotEmpty(operTimeField)) {
-            inputColNames.add(operTimeField);
-        }
-        if (StringUtils.isNotEmpty(operTypeField)) {
-            inputColNames.add(operTypeField);
-        }
-        if (keyCols != null) {
-            for (String s : keyCols) {
-                inputColNames.add(s);
-            }
-        }
-        if (focusCols != null) {
-            for (String s : focusCols) {
-                inputColNames.add(ColNameUtil.getBeforeName(s));
-                inputColNames.add(ColNameUtil.getAfterName(s));
-            }
-        }
-        handlerProperties.setInputColNames(inputColNames);
 
         // Build partition...
-        String[] partitionCols = getPropCols(partitionFields);
-        String[] partitionVals = getPropCols(partitionValues);
+        List<String> partitionCols = getPropCols(partitionFields);
+        List<String> partitionVals = getPropCols(partitionValues);
 
+        // TODO partition map
         if (partitionCols != null) {
-            if (partitionVals != null & partitionCols.length == partitionVals.length) {
+            if (partitionVals != null & partitionCols.size() == partitionVals.size()) {
                 handlerProperties.setPartitionCols(partitionCols);
                 handlerProperties.setPartitionVals(partitionVals);
-                handlerProperties.setPartitionMap(buildPartitionMap());
             } else {
                 logger.error("Number of partition cols and vals are not consistent.");
                 oggAlarm.error("Number of partition cols and vals are not consistent.");
@@ -218,105 +210,34 @@ public class DatahubHandler extends AbstractHandler {
             }
         }
 
-        // RecordBuilder
-        handlerProperties.setRecordBuilder(initRecordBuilder());
+        // Other properties
+        handlerProperties.setProject(project);
+        handlerProperties.setShardNumber(shardNumber);
+        handlerProperties.setOdpsTables(odps.tables());
+        handlerProperties.setShardTimeout(shardTimeout);
+        handlerProperties.setBatchSize(batchSize);
+        handlerProperties.setRetryCount(retryCount);
+        handlerProperties.setDbDateFormat(dbDateFormat);
+        handlerProperties.setMetaFieldName("meta");
 
-        // OdpsWriter
-        try {
-            odpsWriter = buildOdpsWriter();
-        } catch (TunnelException | IOException | TimeoutException e) {
-            logger.error("Initialize OdpsWriter failed.", e);
-            oggAlarm.error("Initialize OdpsWriter failed.", e);
-            throw new RuntimeException("Initialize OdpsWriter failed.", e);
-        }
+        TableTunnel tunnel = new TableTunnel(odps);
+        tunnel.setEndpoint(datahubEndPoint);
+        handlerProperties.setTunnel(tunnel);
     }
 
-    private RecordBuilder initRecordBuilder() {
-        return new RecordBuilder(odpsTable, dbDateFormat, handlerProperties.getInputColNames());
-    }
 
-    private String[] getPropCols(String propertyString) {
+    private List<String> getPropCols(String propertyString) {
         if (StringUtils.isEmpty(propertyString)) {
             logger.warn("Property is empty. property name:" + propertyString);
             oggAlarm.warn("Property is empty. property name:" + propertyString);
             return null;
         }
+        List<String> propList = Lists.newArrayList();
         String[] propCols = propertyString.split(",");
         for (int i = 0; i < propCols.length; i++) {
-            propCols[i] = propCols[i].split("/")[0].trim();
+            propList.add(propCols[i].split("/")[0].trim().toLowerCase());
         }
-        return propCols;
-    }
-
-    private Map buildPartitionMap() {
-        Map partitionMap = Maps.newHashMap();
-        for (Partition partition : odpsTable.getPartitions()) {
-            partitionMap.put(partition.getPartitionSpec().toString(), true);
-        }
-        return partitionMap;
-    }
-
-    private OdpsWriter buildOdpsWriter() throws TunnelException, IOException, TimeoutException {
-        TableTunnel tunnel = new TableTunnel(odps);
-        tunnel.setEndpoint(datahubEndPoint);
-        StreamClient streamClient = tunnel.createStreamClient(project, tableName);
-        streamClient.loadShard(shardNumber);
-        StreamWriter[] streamWriters = buildStreamWriters(streamClient);
-        return new OdpsWriter(odpsTable, streamWriters, sentPartitionCount, retryCount);
-    }
-
-    // Wait for loading shard, default timeout: 60s
-    private StreamWriter[] buildStreamWriters(StreamClient streamClient) throws IOException, TunnelException,
-            TimeoutException {
-        StreamWriter[] streamWriters;
-        final StreamClient.ShardState finish = StreamClient.ShardState.LOADED;
-        long now = System.currentTimeMillis();
-        long endTime = now + shardTimeout * 1000;
-        List<Long> shardIDList = null;
-        while (now < endTime) {
-            HashMap<Long, StreamClient.ShardState> shardStatus = streamClient
-                    .getShardStatus();
-            shardIDList = new ArrayList<Long>();
-            Set<Long> keys = shardStatus.keySet();
-            Iterator<Long> iter = keys.iterator();
-            while (iter.hasNext()) {
-                Long key = iter.next();
-                StreamClient.ShardState value = shardStatus.get(key);
-                if (value.equals(finish)) {
-                    shardIDList.add(key);
-                }
-            }
-            now = System.currentTimeMillis();
-            if (shardIDList.size() == shardNumber) {
-                break;
-            }
-            try {
-                Thread.sleep(1000);
-            } catch (InterruptedException e) {
-                // DO NOTHING...
-            }
-        }
-        if (shardIDList != null && shardIDList.size() > 0) {
-            streamWriters = new StreamWriter[shardIDList.size()];
-            for (int i = 0; i < shardIDList.size(); i++) {
-                streamWriters[i] = streamClient.openStreamWriter(shardIDList.get(i));
-            }
-        } else {
-            oggAlarm.error("buildStreamWriters() error, have no loaded shards.");
-            throw new TimeoutException("buildStreamWriters() error, have no loaded shards.");
-        }
-        return streamWriters;
-    }
-
-    private Map<String, Boolean> buildColMap(String[] cols) {
-        if (cols == null) {
-            return null;
-        }
-        Map<String, Boolean> colMap = Maps.newHashMap();
-        for (String c : cols) {
-            colMap.put(c, true);
-        }
-        return colMap;
+        return propList;
     }
 
     @Override
@@ -326,25 +247,16 @@ public class DatahubHandler extends AbstractHandler {
 
     @Override
     public Status transactionBegin(DsEvent e, DsTransaction tx) {
-        currentBatchCount = 0;
+        //currentBatchCount = 0;
         return super.transactionBegin(e, tx);
     }
+
 
     @Override
     public Status operationAdded(DsEvent e, DsTransaction tx, DsOperation dsOperation) {
         Status status = Status.OK;
         super.operationAdded(e, tx, dsOperation);
-        // If already sent batch, update counters
-        if (currentBatchCount < sentBatchCount) {
-            batchEventCount++;
-            if (batchEventCount == batchSize) {
-                batchEventCount = 0;
-                currentBatchCount++;
-            }
-            return status;
-        }
 
-        // If haven't sent batch, do processing
         Op op = new Op(dsOperation, getMetaData().getTableMetaData(dsOperation.getTableName()), getConfig());
         // Get corresponding operationHandler
         OperationTypes operationType = OperationTypes.valueOf(dsOperation.getOperationType().toString());
@@ -352,31 +264,29 @@ public class DatahubHandler extends AbstractHandler {
         if (operationHandler != null) {
             try {
                 operationHandler.process(op, handlerProperties);
-                batchEventCount++;
-                // If batch is full, send batch
-                if (batchEventCount == batchSize) {
-                    status = sendEvents();
-                    if (status == Status.OK) {
-                        batchEventCount = 0;
-                        currentBatchCount++;
-                        sentBatchCount++;
-                        isBatchCountChanged = true;
-                    }
-                    updateHandlerInfo();
-                }
                 handlerProperties.totalOperations++;
             } catch (Exception e1) {
-                String msg = "Unable to process operation.";
-                if (badRecordCount < passFailedOperationCount) {
+                if (e1 instanceof OperationHandler.OdpsTableNotSetException) {
                     status = Status.OK;
-                    badRecordCount++;
-                    logBadOperation(op, e1.toString());
-                    oggAlarm.warn(msg, e1);
-                    logger.warn(msg, e1);
-                } else {
-                    oggAlarm.error(msg, e1);
-                    logger.error(msg, e1);
+                    logger.warn(e1.getMessage());
+                    oggAlarm.warn(e1.getMessage());
+                }else if (e1 instanceof OdpsWriter.WriteHubRetryFailedException) {
                     status = Status.ABEND;
+                    oggAlarm.error("Failed after retry", e1);
+                    logger.error("Failed after retry", e1);
+                } else {
+                    String msg = "Unable to process operation.";
+                    if (badRecordCount < passFailedOperationCount) {
+                        status = Status.OK;
+                        badRecordCount++;
+                        logBadOperation(op, e1.getMessage());
+                        oggAlarm.warn(msg, e1);
+                        logger.warn(msg, e1);
+                    } else {
+                        oggAlarm.error(msg, e1);
+                        logger.error(msg, e1);
+                        status = Status.ABEND;
+                    }
                 }
             }
         } else {
@@ -399,17 +309,18 @@ public class DatahubHandler extends AbstractHandler {
 
     private void logBadOperation(Op op, String msg) {
         StringBuilder sb = new StringBuilder();
-        String sep = "";
-        sb.append("Operation Read Time: ").append(op.getOperation().getReadTimeAsString()).append(". Error msg: ")
-                .append(msg).append(". Operation key: ");
+        String sep = "\n";
+        sb.append("Bad Operation...").append("\n");
+        sb.append("Operation Read Time: ").append(op.getOperation().getReadTimeAsString()).append(".\n");
+        sb.append("Error msg: ").append(msg).append(".\n");
+        sb.append("Full table name: ").append(op.getTableName().getFullName()).append(".\n");
+        sb.append("Operation type: ").append(op.getOperationType().toString()).append(".\n");
+        sb.append("Operation detail: ").append("\n");
+
         List<DsColumn> cols = op.getColumns();
         for (int i = 0; i < cols.size(); i++) {
             String colName = op.getTableMeta().getColumnName(i).toLowerCase();
-            Map<String, Boolean> keyColMap = handlerProperties.getKeyColMap();
-            if (keyColMap != null && keyColMap.containsKey(colName)) {
-                sb.append(sep).append(colName).append("=").append(cols.get(i).getAfterValue());
-                sep = ",";
-            }
+            sb.append(sep).append(colName).append(":'").append(cols.get(i).getBeforeValue()).append("' -> '").append(cols.get(i).getAfterValue()).append("'");
         }
         sb.append("\n\n");
         try {
@@ -425,39 +336,22 @@ public class DatahubHandler extends AbstractHandler {
 
     @Override
     public Status transactionCommit(DsEvent e, DsTransaction tx) {
-        super.transactionCommit(e, tx);
-        Status status = sendEvents();
-        if (status == Status.OK) {
-            batchEventCount = 0;
-            if (sentBatchCount != 0) {
-                sentBatchCount = 0;
-                isBatchCountChanged = true;
+        Status status = super.transactionCommit(e, tx);
+        for(OdpsWriter writer: handlerProperties.getTableWriterMap().values()) {
+            try {
+                writer.flushAll();
+            } catch (Exception e1) {
+                status = status.ABEND;
+                oggAlarm.error("Unable to deliver records", e1);
+                logger.error("Unable to deliver records", e1);
+                // TODO: record which table
+                //updateHandlerInfo();
             }
         }
-        updateHandlerInfo();
         handlerProperties.totalTxns++;
         return status;
     }
 
-    private Status sendEvents() {
-        Status status = Status.OK;
-        List<OdpsRowDO> rowDOs = handlerProperties.getOdpsRowDOs();
-
-        if (rowDOs != null && rowDOs.size() > 0) {
-            try {
-                odpsWriter.write(rowDOs);
-                rowDOs.clear();
-            } catch (Exception e) {
-                oggAlarm.error("Unable to deliver events, event size: " + rowDOs.size(), e);
-                logger.error("Unable to deliver events, event size: " + rowDOs.size(), e);
-                status = Status.ABEND;
-            }
-        } else {
-            oggAlarm.warn("No records available to send.");
-            logger.warn("No records available to send.");
-        }
-        return status;
-    }
 
     @Override
     public String reportStatus() {
@@ -477,52 +371,36 @@ public class DatahubHandler extends AbstractHandler {
         oggAlarm.warn("Handler destroying...");
         super.destroy();
     }
-
-    private void updateHandlerInfo() {
-        int writerCachePartitionCount = odpsWriter.getSentPartitionCount();
-        if (writerCachePartitionCount == sentPartitionCount && !isBatchCountChanged) {
-            return;
-        }
-        sentPartitionCount = writerCachePartitionCount;
-        DataOutputStream out = null;
-        try {
-            out = new DataOutputStream(new FileOutputStream(handlerInfoFileName, false));
-            out.writeInt(sentBatchCount);
-            out.writeInt(sentPartitionCount);
-        } catch (IOException e) {
-            oggAlarm.error("Error writing handler info file. sentBatchCount=" + sentBatchCount
-                    + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-            logger.error("Error writing handler info file. sentBatchCount=" + sentBatchCount
-                    + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-        } finally {
-            if (out != null) {
-                try {
-                    out.close();
-                } catch (IOException e) {
-                    oggAlarm.error("Close handler info file failed. sentBatchCount=" + sentBatchCount
-                            + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-                    logger.error("Close handler info file failed. sentBatchCount=" + sentBatchCount
-                            + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-                }
-            }
-        }
-    }
-
-    public String getOperTypeField() {
-        return operTypeField;
-    }
-
-    public void setOperTypeField(String operTypeField) {
-        this.operTypeField = operTypeField;
-    }
-
-    public String getOperTimeField() {
-        return operTimeField;
-    }
-
-    public void setOperTimeField(String operTimeField) {
-        this.operTimeField = operTimeField;
-    }
+//
+//    private void updateHandlerInfo() {
+//        int writerCachePartitionCount = odpsWriter.getSentPartitionCount();
+//        if (writerCachePartitionCount == sentPartitionCount && !isBatchCountChanged) {
+//            return;
+//        }
+//        sentPartitionCount = writerCachePartitionCount;
+//        DataOutputStream out = null;
+//        try {
+//            out = new DataOutputStream(new FileOutputStream(handlerInfoFileName, false));
+//            out.writeInt(sentBatchCount);
+//            out.writeInt(sentPartitionCount);
+//        } catch (IOException e) {
+//            oggAlarm.error("Error writing handler info file. sentBatchCount=" + sentBatchCount
+//                    + ", sentPartitionCount=" + sentPartitionCount + ".", e);
+//            logger.error("Error writing handler info file. sentBatchCount=" + sentBatchCount
+//                    + ", sentPartitionCount=" + sentPartitionCount + ".", e);
+//        } finally {
+//            if (out != null) {
+//                try {
+//                    out.close();
+//                } catch (IOException e) {
+//                    oggAlarm.error("Close handler info file failed. sentBatchCount=" + sentBatchCount
+//                            + ", sentPartitionCount=" + sentPartitionCount + ".", e);
+//                    logger.error("Close handler info file failed. sentBatchCount=" + sentBatchCount
+//                            + ", sentPartitionCount=" + sentPartitionCount + ".", e);
+//                }
+//            }
+//        }
+//    }
 
     public String getPartitionValues() {
         return partitionValues;
@@ -588,11 +466,11 @@ public class DatahubHandler extends AbstractHandler {
         this.datahubEndPoint = datahubEndPoint;
     }
 
-    public int getShardNumber() {
+    public long getShardNumber() {
         return shardNumber;
     }
 
-    public void setShardNumber(int shardNumber) {
+    public void setShardNumber(long shardNumber) {
         this.shardNumber = shardNumber;
     }
 
@@ -698,5 +576,13 @@ public class DatahubHandler extends AbstractHandler {
 
     public void setHandlerInfoFileName(String handlerInfoFileName) {
         this.handlerInfoFileName = handlerInfoFileName;
+    }
+
+    public String getTableMap() {
+        return tableMap;
+    }
+
+    public void setTableMap(String tableMap) {
+        this.tableMap = tableMap;
     }
 }

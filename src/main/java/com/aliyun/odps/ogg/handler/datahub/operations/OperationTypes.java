@@ -24,8 +24,12 @@ import org.slf4j.LoggerFactory;
 public enum OperationTypes {
 	
 	INSERT(InsertOperationHandler.class),
+	UPDATE(UpdateOperationHandler.class),
+	UPDATE_AUDITCOMP(UpdateOperationHandler.class),
 	UPDATE_FIELDCOMP(UpdateOperationHandler.class),
 	UPDATE_FIELDCOMP_PK(UpdateOperationHandler.class),
+	UNIFIED_UPDATE_VAL(UpdateOperationHandler.class),
+	UNIFIED_PK_UPDATE_VAL(UpdateOperationHandler.class),
 	DELETE(DeleteOperationHandler.class);
 	
 	final private Logger logger = LoggerFactory.getLogger(OperationTypes.class);

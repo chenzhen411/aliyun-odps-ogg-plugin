@@ -20,16 +20,31 @@ package com.aliyun.odps.ogg.handler.datahub;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
-import com.aliyun.odps.Table;
+import com.aliyun.odps.Tables;
 import com.aliyun.odps.ogg.handler.datahub.alarm.OggAlarm;
-import com.aliyun.odps.ogg.handler.datahub.dataobject.OdpsRowDO;
+import com.aliyun.odps.tunnel.TableTunnel;
 
 public class HandlerProperties {
 	
 	public HandlerProperties() {
 	}
-	
+
+	private Map<String, OdpsWriter> tableWriterMap;
+	private Map<String, String> oracleOdpsTableMap;
+	private TableTunnel tunnel;
+	private Tables odpsTables;
+	private String project;
+	private long shardNumber;
+	private int shardTimeout;
+	private int batchSize;
+	private int retryCount;
+	private String dbDateFormat;
+	private Map<String, Set<String>> tableKeysMap;
+	private Map<String, Set<String>> tableFocusMap;
+	private String metaFieldName;
+
 	public Long totalInserts = 0L;
 	public Long totalUpdates = 0L;
 	public Long totalDeletes =  0L;
@@ -37,109 +52,26 @@ public class HandlerProperties {
 	public Long totalOperations = 0L;
 
 	private OggAlarm oggAlarm;
-	private String operTypeField;
-	private String operTimeField;
-	private Map<String, Boolean> focusColMap;
-	private Map<String, Boolean> keyColMap;
-	private List<OdpsRowDO> odpsRowDOs;
-	private List<String> inputColNames;
-	private String[] partitionCols;
-	private String[] partitionVals;
+	private List<String> partitionCols;
+	private List<String> partitionVals;
 
 	private String timestampField;
 	private SimpleDateFormat simpleDateFormat;
-	private RecordBuilder recordBuilder;
 
-	public RecordBuilder getRecordBuilder() {
-		return recordBuilder;
-	}
-
-	public void setRecordBuilder(RecordBuilder recordBuilder) {
-		this.recordBuilder = recordBuilder;
-	}
-
-	public String[] getPartitionVals() {
+	public List<String> getPartitionVals() {
 		return partitionVals;
 	}
 
-	public void setPartitionVals(String[] partitionVals) {
+	public void setPartitionVals(List<String> partitionVals) {
 		this.partitionVals = partitionVals;
 	}
 
-	public String[] getPartitionCols() {
+	public List<String> getPartitionCols() {
 		return partitionCols;
 	}
 
-	public void setPartitionCols(String[] partitionCols) {
+	public void setPartitionCols(List<String> partitionCols) {
 		this.partitionCols = partitionCols;
-	}
-
-	private Map<String, Boolean> partitionMap;
-
-	private Table odpsTable;
-
-	public Table getOdpsTable() {
-		return odpsTable;
-	}
-
-	public void setOdpsTable(Table odpsTable) {
-		this.odpsTable = odpsTable;
-	}
-
-	public Map<String, Boolean> getPartitionMap() {
-		return partitionMap;
-	}
-
-	public void setPartitionMap(Map<String, Boolean> partitionMap) {
-		this.partitionMap = partitionMap;
-	}
-
-
-	public List<String> getInputColNames() {
-		return inputColNames;
-	}
-
-	public void setInputColNames(List<String> inputColNames) {
-		this.inputColNames = inputColNames;
-	}
-
-	public Map<String, Boolean> getFocusColMap() {
-		return focusColMap;
-	}
-
-	public void setFocusColMap(Map<String, Boolean> focusColMap) {
-		this.focusColMap = focusColMap;
-	}
-
-	public String getOperTypeField() {
-		return operTypeField;
-	}
-
-	public void setOperTypeField(String operTypeField) {
-		this.operTypeField = operTypeField;
-	}
-
-	public String getOperTimeField() {
-		return operTimeField;
-	}
-
-	public void setOperTimeField(String operTimeField) {
-		this.operTimeField = operTimeField;
-	}
-
-	public List<OdpsRowDO> getOdpsRowDOs() {
-		return odpsRowDOs;
-	}
-
-	public void setOdpsRowDOs(List<OdpsRowDO> odpsRowDOs) {
-		this.odpsRowDOs = odpsRowDOs;
-	}
-	public Map<String, Boolean> getKeyColMap() {
-		return keyColMap;
-	}
-
-	public void setKeyColMap(Map<String, Boolean> keyColMap) {
-		this.keyColMap = keyColMap;
 	}
 
 	public String getTimestampField() {
@@ -164,5 +96,109 @@ public class HandlerProperties {
 
 	public void setOggAlarm(OggAlarm oggAlarm) {
 		this.oggAlarm = oggAlarm;
+	}
+
+	public Map<String, OdpsWriter> getTableWriterMap() {
+		return tableWriterMap;
+	}
+
+	public void setTableWriterMap(Map<String, OdpsWriter> tableWriterMap) {
+		this.tableWriterMap = tableWriterMap;
+	}
+
+	public Map<String, String> getOracleOdpsTableMap() {
+		return oracleOdpsTableMap;
+	}
+
+	public void setOracleOdpsTableMap(Map<String, String> oracleOdpsTableMap) {
+		this.oracleOdpsTableMap = oracleOdpsTableMap;
+	}
+
+	public TableTunnel getTunnel() {
+		return tunnel;
+	}
+
+	public void setTunnel(TableTunnel tunnel) {
+		this.tunnel = tunnel;
+	}
+
+	public Tables getOdpsTables() {
+		return odpsTables;
+	}
+
+	public void setOdpsTables(Tables odpsTables) {
+		this.odpsTables = odpsTables;
+	}
+
+	public String getProject() {
+		return project;
+	}
+
+	public void setProject(String project) {
+		this.project = project;
+	}
+
+	public long getShardNumber() {
+		return shardNumber;
+	}
+
+	public void setShardNumber(long shardNumber) {
+		this.shardNumber = shardNumber;
+	}
+
+	public int getShardTimeout() {
+		return shardTimeout;
+	}
+
+	public void setShardTimeout(int shardTimeout) {
+		this.shardTimeout = shardTimeout;
+	}
+
+	public int getBatchSize() {
+		return batchSize;
+	}
+
+	public void setBatchSize(int batchSize) {
+		this.batchSize = batchSize;
+	}
+
+	public int getRetryCount() {
+		return retryCount;
+	}
+
+	public void setRetryCount(int retryCount) {
+		this.retryCount = retryCount;
+	}
+
+	public String getDbDateFormat() {
+		return dbDateFormat;
+	}
+
+	public void setDbDateFormat(String dbDateFormat) {
+		this.dbDateFormat = dbDateFormat;
+	}
+
+	public Map<String, Set<String>> getTableKeysMap() {
+		return tableKeysMap;
+	}
+
+	public void setTableKeysMap(Map<String, Set<String>> tableKeysMap) {
+		this.tableKeysMap = tableKeysMap;
+	}
+
+	public Map<String, Set<String>> getTableFocusMap() {
+		return tableFocusMap;
+	}
+
+	public void setTableFocusMap(Map<String, Set<String>> tableFocusMap) {
+		this.tableFocusMap = tableFocusMap;
+	}
+
+	public String getMetaFieldName() {
+		return metaFieldName;
+	}
+
+	public void setMetaFieldName(String metaFieldName) {
+		this.metaFieldName = metaFieldName;
 	}
 }
