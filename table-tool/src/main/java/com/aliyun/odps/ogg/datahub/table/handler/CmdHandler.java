@@ -88,7 +88,7 @@ public abstract class CmdHandler {
             params.setShardNumber(shardNumber);
             params.setHubLifeCycle(hubLifeCycle);
 
-            Map<String, OdpsType> colTypeMap = Maps.newHashMap();
+            Map<String, OdpsType> colTypeMap = Maps.newLinkedHashMap();
             colTypeMap.put(getHubProperty("opTypeField", "optype"), OdpsType.STRING);
             colTypeMap.put(getHubProperty("readTimeField", "readtime"), OdpsType.STRING);
             if (tableKeysMap != null) {

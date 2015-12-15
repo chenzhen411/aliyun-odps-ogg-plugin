@@ -2,6 +2,7 @@ package com.aliyun.odps.ogg.handler.datahub.utils;
 
 import com.aliyun.odps.Table;
 import com.aliyun.odps.TableSchema;
+import com.aliyun.odps.ogg.handler.datahub.HandlerProperties;
 import com.aliyun.odps.ogg.handler.datahub.OdpsWriter;
 import com.aliyun.odps.tunnel.StreamClient;
 import com.aliyun.odps.tunnel.TableTunnel;
@@ -33,12 +34,13 @@ public class OdpsUtils {
                                            int retryCount,
                                            int shardTimeout,
                                            String dateFormatString,
-                                           List<String> inputColNames)
+                                           List<String> inputColNames,
+                                           HandlerProperties handlerProperties)
       throws TunnelException, IOException, TimeoutException {
     StreamClient streamClient = tunnel.createStreamClient(project, tableName);
     streamClient.loadShard(shardNumber);
     StreamWriter[] streamWriters = buildStreamWriters(streamClient, shardNumber, shardTimeout);
-    return new OdpsWriter(table, streamWriters, batchSize, retryCount, dateFormatString, inputColNames);
+    return new OdpsWriter(table, streamWriters, batchSize, retryCount, dateFormatString, inputColNames, handlerProperties);
   }
 
   // Wait for loading shard, default timeout: 60s

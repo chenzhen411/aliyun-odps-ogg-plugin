@@ -47,6 +47,10 @@ public class HandlerProperties {
 	private String opTypeFieldName;
 	private String readTimeFieldName;
 
+	private int skipSendTimes;
+	private int sendTimesInTx;
+	private String handlerInfoFileName;
+
 	public Long totalInserts = 0L;
 	public Long totalUpdates = 0L;
 	public Long totalDeletes =  0L;
@@ -218,5 +222,33 @@ public class HandlerProperties {
 
 	public void setReadTimeFieldName(String readTimeFieldName) {
 		this.readTimeFieldName = readTimeFieldName;
+	}
+
+	public int getSkipSendTimes() {
+		return skipSendTimes;
+	}
+
+	public void setSkipSendTimes(int skipSendTimes) {
+		this.skipSendTimes = skipSendTimes;
+	}
+
+	public int getSendTimesInTx() {
+		return sendTimesInTx;
+	}
+
+	public void setSendTimesInTx(int sendTimesInTx) {
+		this.sendTimesInTx = sendTimesInTx;
+	}
+
+	public void incrementSendTimesInTx() {
+		sendTimesInTx ++;
+	}
+
+	public String getHandlerInfoFileName() {
+		return handlerInfoFileName;
+	}
+
+	public void setHandlerInfoFileName(String handlerInfoFileName) {
+		this.handlerInfoFileName = handlerInfoFileName;
 	}
 }

@@ -76,62 +76,53 @@ public class DatahubHandler extends AbstractHandler {
 
     private HandlerProperties handlerProperties;
     private Odps odps;
-    private Table odpsTable;
     private OggAlarm oggAlarm;
 
-    private int sentBatchCount;
-    private int sentPartitionCount;
-
     private String handlerInfoFileName;
-    private boolean isBatchCountChanged = false;
     private int badRecordCount;
 
     @Override
     public void init(DsConfiguration dsConf, DsMetaData dsMeta) {
         super.init(dsConf, dsMeta);
 
-
-//        if (StringUtils.isEmpty(handlerInfoFileName)) {
-//            handlerInfoFileName = "dirdat/" + getName() + "_handler_info";
-//        }
-        badRecordCount = 0;
+        if (StringUtils.isEmpty(handlerInfoFileName)) {
+            handlerInfoFileName = "dirdat/" + getName() + "_handler_info";
+        }
         if (StringUtils.isEmpty(failedOperationFileName)) {
             failedOperationFileName = "dirrpt/" + getName() + "_bad_operations.data";
         }
 
+        badRecordCount = 0;
         buildOdps();
         initProperty();
-//        loadCountInfo();
+        // For recovery
+        handlerProperties.setSkipSendTimes(getSkipSendTimes(handlerInfoFileName, oggAlarm));
     }
 
-//    private void loadCountInfo() {
-//        batchEventCount = 0;
-//        currentBatchCount = 0;
-//        File handlerInfoFile = new File(handlerInfoFileName);
-//        if (handlerInfoFile.exists() && !handlerInfoFile.isDirectory()) {
-//            DataInputStream in = null;
-//            try {
-//                in = new DataInputStream(new FileInputStream(handlerInfoFile));
-//                sentBatchCount = in.readInt();
-//                sentPartitionCount = in.readInt();
-//            } catch (IOException e) {
-//                logger.warn("Error reading handler info file, may cause duplication ", e);
-//                oggAlarm.warn("Error reading handler info file, may cause duplication ", e);
-//            } finally {
-//                if (in != null) {
-//                    try {
-//                        in.close();
-//                    } catch (IOException e) {
-//                        logger.warn("Close handler info file failed. ", e);
-//                        oggAlarm.warn("Close handler info file failed. ", e);
-//                    }
-//                }
-//            }
-//        } else {
-//            sentBatchCount = 0;
-//            sentPartitionCount = 0;
-//        }
-//    }
+    public static int getSkipSendTimes(String fileName, OggAlarm oggAlarm) {
+        File handlerInfoFile = new File(fileName);
+        if (handlerInfoFile.exists() && !handlerInfoFile.isDirectory()) {
+            DataInputStream in = null;
+            try {
+                in = new DataInputStream(new FileInputStream(handlerInfoFile));
+                return in.readInt();
+            } catch (IOException e) {
+                logger.warn("Error reading handler info file, may cause duplication ", e);
+                oggAlarm.warn("Error reading handler info file, may cause duplication ", e);
+            } finally {
+                if (in != null) {
+                    try {
+                        in.close();
+                    } catch (IOException e) {
+                        logger.warn("Close handler info file failed. ", e);
+                        oggAlarm.warn("Close handler info file failed. ", e);
+                    }
+                }
+            }
+        }
+        return 0;
+    }
+
 
     private void buildOdps() {
         Account account = new AliyunAccount(accessID, accessKey);
@@ -221,6 +212,7 @@ public class DatahubHandler extends AbstractHandler {
         handlerProperties.setMetaFieldName("meta");
         handlerProperties.setOpTypeFieldName("optype");
         handlerProperties.setReadTimeFieldName("readtime");
+        handlerProperties.setHandlerInfoFileName(handlerInfoFileName);
 
         TableTunnel tunnel = new TableTunnel(odps);
         tunnel.setEndpoint(datahubEndPoint);
@@ -249,10 +241,9 @@ public class DatahubHandler extends AbstractHandler {
 
     @Override
     public Status transactionBegin(DsEvent e, DsTransaction tx) {
-        //currentBatchCount = 0;
+        handlerProperties.setSendTimesInTx(0);
         return super.transactionBegin(e, tx);
     }
-
 
     @Override
     public Status operationAdded(DsEvent e, DsTransaction tx, DsOperation dsOperation) {
@@ -346,14 +337,13 @@ public class DatahubHandler extends AbstractHandler {
                 status = status.ABEND;
                 oggAlarm.error("Unable to deliver records", e1);
                 logger.error("Unable to deliver records", e1);
-                // TODO: record which table
-                //updateHandlerInfo();
             }
         }
+        handlerProperties.setSkipSendTimes(0);
+        recordSendTimes(0, handlerProperties);
         handlerProperties.totalTxns++;
         return status;
     }
-
 
     @Override
     public String reportStatus() {
@@ -373,36 +363,27 @@ public class DatahubHandler extends AbstractHandler {
         oggAlarm.warn("Handler destroying...");
         super.destroy();
     }
-//
-//    private void updateHandlerInfo() {
-//        int writerCachePartitionCount = odpsWriter.getSentPartitionCount();
-//        if (writerCachePartitionCount == sentPartitionCount && !isBatchCountChanged) {
-//            return;
-//        }
-//        sentPartitionCount = writerCachePartitionCount;
-//        DataOutputStream out = null;
-//        try {
-//            out = new DataOutputStream(new FileOutputStream(handlerInfoFileName, false));
-//            out.writeInt(sentBatchCount);
-//            out.writeInt(sentPartitionCount);
-//        } catch (IOException e) {
-//            oggAlarm.error("Error writing handler info file. sentBatchCount=" + sentBatchCount
-//                    + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-//            logger.error("Error writing handler info file. sentBatchCount=" + sentBatchCount
-//                    + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-//        } finally {
-//            if (out != null) {
-//                try {
-//                    out.close();
-//                } catch (IOException e) {
-//                    oggAlarm.error("Close handler info file failed. sentBatchCount=" + sentBatchCount
-//                            + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-//                    logger.error("Close handler info file failed. sentBatchCount=" + sentBatchCount
-//                            + ", sentPartitionCount=" + sentPartitionCount + ".", e);
-//                }
-//            }
-//        }
-//    }
+
+    public static void recordSendTimes(int times, HandlerProperties handlerProperties) {
+        DataOutputStream out = null;
+        OggAlarm oggAlarm = handlerProperties.getOggAlarm();
+        try {
+            out = new DataOutputStream(new FileOutputStream(handlerProperties.getHandlerInfoFileName(), false));
+            out.writeInt(handlerProperties.getSkipSendTimes());
+        } catch (IOException e) {
+            oggAlarm.error("Error writing handler info file. sendTimesInTx=" + times + ".", e);
+            logger.error("Error writing handler info file. sendTimesInTx=" + times + ".", e);
+        } finally {
+            if (out != null) {
+                try {
+                    out.close();
+                } catch (IOException e) {
+                    oggAlarm.error("Close handler info file failed. sendTimesInTx=" + times + ".", e);
+                    logger.error("Close handler info file failed. sendTimesInTx=" + times + ".", e);
+                }
+            }
+        }
+    }
 
     public String getPartitionValues() {
         return partitionValues;

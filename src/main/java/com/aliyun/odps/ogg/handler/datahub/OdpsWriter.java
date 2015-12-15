@@ -44,17 +44,21 @@ public class OdpsWriter {
     private Set<String> partitionSet;
     private Table table;
 
+    private HandlerProperties handlerProperties;
+
     public OdpsWriter(Table table,
                       StreamWriter[] streamWriters,
                       int batchSize,
                       int retryCount,
                       String dateFormatString,
-                      List<String> inputColNames) throws TunnelException {
+                      List<String> inputColNames,
+                      HandlerProperties handlerProperties) throws TunnelException {
         this.table = table;
         this.streamWriters = streamWriters;
         this.tableSchema = table.getSchema();
         this.retryCount = retryCount;
         this.batchSize = batchSize;
+        this.handlerProperties = handlerProperties;
         random = new Random();
         partitionRecordsMap = new HashMap<String, StreamRecordPack>();
         recordBuilder = new RecordBuilder(table, dateFormatString, inputColNames);
@@ -112,12 +116,18 @@ public class OdpsWriter {
         int retrys = 0;
         while (true) {
             try {
-                if (StringUtils.isEmpty(partition)) {
+                if (handlerProperties.getSendTimesInTx() < handlerProperties.getSkipSendTimes()) {
+                    // Do Nothing
+                } else if (StringUtils.isEmpty(partition)) {
                     streamWriters[random.nextInt(streamWriters.length)]
                         .write(pack);
                 } else {
                     streamWriters[random.nextInt(streamWriters.length)]
                         .write(new PartitionSpec(partition), pack);
+                }
+                handlerProperties.incrementSendTimesInTx();
+                if (handlerProperties.getSendTimesInTx() > handlerProperties.getSkipSendTimes()) {
+                    DatahubHandler.recordSendTimes(handlerProperties.getSendTimesInTx(), handlerProperties);
                 }
                 break;
             } catch (Exception e) {

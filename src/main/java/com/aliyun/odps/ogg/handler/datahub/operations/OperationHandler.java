@@ -161,12 +161,12 @@ public abstract class OperationHandler {
                 handlerProperties.getRetryCount(),
                 handlerProperties.getShardTimeout(),
                 handlerProperties.getDbDateFormat(),
-                inputColNames);
+                inputColNames,
+                handlerProperties);
             tableWriterMap.put(fullTableName, odpsWriter);
         }
         return odpsWriter;
     }
-
 
     private String getPartitionSpec(OdpsWriter odpsWriter,
                                     HandlerProperties handlerProperties,
