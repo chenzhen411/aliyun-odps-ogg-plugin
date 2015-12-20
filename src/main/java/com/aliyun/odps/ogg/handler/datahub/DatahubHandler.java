@@ -147,12 +147,13 @@ public class DatahubHandler extends AbstractHandler {
     }
 
     private Map<String, Set<String>> buildStringSetMap(String str) {
+        Map<String, Set<String>> map = Maps.newHashMap();
         if (StringUtils.isEmpty(str)) {
-            return null;
+            return map;
         }
         // "table1:name1/type1,name2/type2|table2:name3/type3|...
         // all to lower case
-        Map<String, Set<String>> map = Maps.newHashMap();
+
         String[] tableInfos = str.split("\\|");
         for (String tableInfo: tableInfos) {
             String[] nameList = tableInfo.split(":");
