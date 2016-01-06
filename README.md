@@ -126,6 +126,9 @@ gg.handler.ggdatahub.operTypeField=operation_type
 # Specify which field of ODPS table should store the operation time. If skip this, no operation time would be stored.
 gg.handler.ggdatahub.operTimeField=operation_time
 
+# ODPS ORACLE table map
+gg.handler.ggdatahub.tableMap=ogg_test.test_1/ogg_test1,ogg_test.test_2/ogg_test2
+
 # Specify the field names of the keys in Oracle, and the corresponding data-type in ODPS. Datahub handler will parse each value of these fields to the specified data-type, and put the results in the fields with the same name in ODPS table
 gg.handler.ggdatahub.keyFields=trans_id/STRING,item_id/STRING
 
