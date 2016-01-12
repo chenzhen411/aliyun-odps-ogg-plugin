@@ -1,6 +1,7 @@
 package com.aliyun.odps.ogg.datahub.table;
 
 import com.aliyun.odps.*;
+import com.aliyun.odps.task.SQLTask;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,7 +43,8 @@ public class TableParams {
     }
 
     try {
-      tables.create(projectName, tableName, schema, false, shardNumber, hubLifeCycle);
+      tables.create(projectName, tableName, schema);
+      tables.get(tableName).createShards(shardNumber, true, hubLifeCycle);
     } catch (OdpsException e) {
       logger.error("Create table failed. ", e);
       throw new RuntimeException("Create table failed. ", e);
