@@ -36,6 +36,7 @@ import com.aliyun.odps.tunnel.TunnelException;
 import com.google.common.collect.Lists;
 import com.google.gson.Gson;
 import org.apache.commons.lang.StringUtils;
+import org.apache.commons.lang.exception.ExceptionUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -112,7 +113,21 @@ public abstract class OperationHandler {
             }
             partitionSpec = getPartitionSpec(odpsWriter, handlerProperties, timestamp, rowMap, true);
         }
-        odpsWriter.addToList(partitionSpec, rowMap);
+        try {
+            odpsWriter.addToList(partitionSpec, rowMap);
+        } catch (Exception e) {
+            StringBuilder sb = new StringBuilder();
+            for (Map.Entry entry : rowMap.entrySet()) {
+                sb.append(entry.toString()).append("\t");
+            }
+            logger.error("------------------------");
+            logger.error("Failed operation info:");
+            logger.error("table: " + fullTableName);
+            logger.error("partitionSpec: " + partitionSpec);
+            logger.error("values: " + sb.toString());
+            logger.error("------------------------");
+            throw new RuntimeException(e);
+        }
     }
 
     // Get OdpsWriter from the map, create if not exist

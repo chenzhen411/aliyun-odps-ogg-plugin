@@ -74,10 +74,15 @@ public class RecordBuilder {
         return colNameTypeMap;
     }
 
-    public Record buildRecord(Map<String, String> rowMap) throws ParseException {
+    public Record buildRecord(Map<String, String> rowMap) {
         Record record = new ArrayRecord(odpsColumns);
         for (Map.Entry<String, String> mapEntry : rowMap.entrySet()) {
-            setField(record, mapEntry.getKey(), mapEntry.getValue(), colNameTypeMap.get(mapEntry.getKey()));
+            try {
+                setField(record, mapEntry.getKey(), mapEntry.getValue(), colNameTypeMap.get(mapEntry.getKey()));
+            } catch (Exception e) {
+                throw new RuntimeException("Error in parsing field '"
+                    + mapEntry.getKey() + "'", e);
+            }
         }
         return record;
     }

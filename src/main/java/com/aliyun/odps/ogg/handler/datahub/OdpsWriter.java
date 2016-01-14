@@ -76,7 +76,7 @@ public class OdpsWriter {
         table.createPartition(partitionSpec, ifNotExist);
     }
 
-    public void addToList(String partition, Map<String, String> rowMap) throws IOException, TunnelException, ParseException {
+    public void addToList(String partition, Map<String, String> rowMap) throws IOException, TunnelException {
         Record record = recordBuilder.buildRecord(rowMap);
         StreamRecordPack recordPack = partitionRecordsMap.get(partition);
         if (recordPack == null) {
