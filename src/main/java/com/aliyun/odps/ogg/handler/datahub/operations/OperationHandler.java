@@ -117,15 +117,21 @@ public abstract class OperationHandler {
             odpsWriter.addToList(partitionSpec, rowMap);
         } catch (Exception e) {
             StringBuilder sb = new StringBuilder();
-            for (Map.Entry entry : rowMap.entrySet()) {
-                sb.append(entry.toString()).append("\t");
+            sb.append("------------------------\n");
+            sb.append("Failed operation info:\n");
+            sb.append("table: " + fullTableName);
+            sb.append("\npartitionSpec: " + partitionSpec);
+            sb.append("\nvalues: ");
+            for (Map.Entry<String, String> entry : rowMap.entrySet()) {
+                String key = entry.getKey();
+                String value = entry.getValue();
+                sb.append(key == null ? "#hxRealNullLabel#" : key)
+                    .append("=")
+                    .append(value == null ? "#hxRealNullLabel#" : value)
+                    .append("\t,\t");
             }
-            logger.error("------------------------");
-            logger.error("Failed operation info:");
-            logger.error("table: " + fullTableName);
-            logger.error("partitionSpec: " + partitionSpec);
-            logger.error("values: " + sb.toString());
-            logger.error("------------------------");
+            sb.append("\n------------------------\n");
+            logger.error(sb.toString());
             throw new RuntimeException(e);
         }
     }
